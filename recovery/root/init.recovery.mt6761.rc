@@ -1,0 +1,111 @@
+import /microtrust.rc
+import /microtrust.capi.rc
+
+on init
+
+    mkdir /mnt/vendor/persist 0700 root root
+    #mount ext4 /dev/block/platform/bootdevice/by-name/persist /mnt/vendor/persist
+    export LD_LIBRARY_PATH /system/lib:/vendor/lib:/vendor/lib/hw:/system/lib/hw
+
+    # Create a more standard /dev/block layout for our scripts
+    symlink /dev/block/platform/bootdevice /dev/block/bootdevice
+
+on post-fs
+    # Support A/B feature for emmc boot region
+    symlink /dev/block/sda /dev/block/mmcblk0boot0
+    symlink /dev/block/sdb /dev/block/mmcblk0boot1
+    symlink /dev/block/mmcblk0boot0 /dev/block/platform/bootdevice/by-name/preloader_a
+    symlink /dev/block/mmcblk0boot1 /dev/block/platform/bootdevice/by-name/preloader_b
+    symlink /dev/block/mmcblk0boot0 /dev/block/by-name/preloader_a
+    symlink /dev/block/mmcblk0boot1 /dev/block/by-name/preloader_b
+
+on fs
+    install_keyring
+    setprop crypto.ready 1
+
+
+on boot
+start health-hal-2-0
+start teei_daemon
+start teei_capi_2_0
+start keymaster-3-0
+start keymaster_attestation-1-1
+start gatekeeper-1-0
+
+
+
+service keystore /system/bin/keystore /data/misc/keystore
+    class main
+    user keystore
+    group keystore drmrpc readproc log
+    writepid /dev/cpuset/foreground/tasks
+seclabel u:r:recovery:s0
+
+service gatekeeper-1-0 /vendor/bin/hw/android.hardware.gatekeeper@1.0-service
+    class hal
+    user system
+    group system
+    seclabel u:r:recovery:s0
+
+service keymaster-3-0 /vendor/bin/hw/android.hardware.keymaster@3.0-service
+    class early_hal
+    user nobody
+    group drmrpc
+    seclabel u:r:recovery:s0
+
+service keymaster_attestation-1-1 /vendor/bin/hw/vendor.mediatek.hardware.keymaster_attestation@1.1-service
+    interface vendor.mediatek.hardware.keymaster_attestation@1.1::IKeymasterDevice default
+ class hal
+    user system
+    group system
+    disabled
+seclabel u:r:recovery:s0
+
+
+on property:crypto.ready=1
+start teei_daemon
+start keymaster-3-0
+start keymaster_attestation-1-1
+start gatekeeper-1-0
+
+on property:ro.crypto.state=encrypted
+start teei_daemon
+start keymaster-3-0
+start keymaster_attestation-1-1
+start gatekeeper-1-0
+
+on property:hwservicemanager.ready=true
+start teei_daemon
+start gatekeeperd
+    start keymaster-3-0
+    start gatekeeper-1-0
+    start keymaster_attestation-1-1
+   
+    
+on property:ro.crypto.state=unsupported
+    stop teei_daemon
+stop gatekeeperd
+    stop keymaster-3-0
+    stop gatekeeper-1-0
+    stop keymaster_attestation-1-1
+   
+
+on property:ro.crypto.state=unencrypted
+    stop teei_daemon
+stop gatekeeperd
+    stop keymaster-3-0
+    stop gatekeeper-1-0
+    stop keymaster_attestation-1-1
+   
+
+on property:twrp.decrypt.done=true
+    stop teei_daemon
+stop gatekeeperd
+    stop keymaster-3-0
+    stop gatekeeper-1-0
+    stop keymaster_attestation-1-1
+  
+
+   
+
+   
